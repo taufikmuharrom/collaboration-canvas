@@ -1,0 +1,56 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Room {
+  id        String   @id @default(cuid())
+  name      String
+  nodes     Node[]
+  edges     Edge[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("rooms")
+}
+
+model Node {
+  id        String   @id @default(cuid())
+  roomId    String
+  label     String
+  positionX Float
+  positionY Float
+  data      Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  // Edges where this node is the source
+  sourceEdges Edge[] @relation("SourceNode")
+  // Edges where this node is the target
+  targetEdges Edge[] @relation("TargetNode")
+
+  @@map("nodes")
+}
+
+model Edge {
+  id        String   @id @default(cuid())
+  roomId    String
+  sourceId  String
+  targetId  String
+  data      Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  source    Node     @relation("SourceNode", fields: [sourceId], references: [id], onDelete: Cascade)
+  target    Node     @relation("TargetNode", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@map("edges")
+}

@@ -1,0 +1,18 @@
+{
+	"dependencies": {
+		"@fastify/cors": "^11.1.0",
+		"@fastify/jwt": "^10.0.0",
+		"@fastify/swagger": "^9.5.2",
+		"@fastify/swagger-ui": "^5.2.3",
+		"@prisma/client": "^6.18.0",
+		"bcrypt": "^6.0.0",
+		"dotenv": "^17.2.3",
+		"fastify": "^5.6.1",
+		"fastify-type-provider-zod": "^6.0.0",
+		"helmet": "^8.1.0",
+		"jsonwebtoken": "^9.0.2",
+		"swagger-themes": "^1.4.3",
+		"zod": "^4.1.12"
+	},
+	"packageManager": "pnpm@10.15.1+sha512.34e538c329b5553014ca8e8f4535997f96180a1d0f614339357449935350d924e22f8614682191264ec33d1462ac21561aff97f6bb18065351c162c7e8f6de67"
+}
