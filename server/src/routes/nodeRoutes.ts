@@ -34,17 +34,17 @@ export async function nodeRoutes(fastify: FastifyInstance): Promise<void> {
     handler: nodeController.getNodeById.bind(nodeController),
   });
 
-  // Create new node
+  // Create new node (supports body or query)
   fastify.post("/", {
-    preHandler: validate(createNodeSchema, "body"),
+    preHandler: validate(createNodeSchema, "body_or_query"),
     handler: nodeController.createNode.bind(nodeController),
   });
 
-  // Update node
+  // Update node (supports body or query)
   fastify.put("/:id", {
     preHandler: [
       validate(paramsSchema, "params"),
-      validate(updateNodeSchema, "body"),
+      validate(updateNodeSchema, "body_or_query"),
     ],
     handler: nodeController.updateNode.bind(nodeController),
   });

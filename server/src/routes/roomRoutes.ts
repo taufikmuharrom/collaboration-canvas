@@ -26,17 +26,17 @@ export async function roomRoutes(fastify: FastifyInstance): Promise<void> {
     handler: roomController.getRoomById.bind(roomController),
   });
 
-  // Create new room
+  // Create new room (supports body or query)
   fastify.post("/", {
-    preHandler: validate(createRoomSchema, "body"),
+    preHandler: validate(createRoomSchema, "body_or_query"),
     handler: roomController.createRoom.bind(roomController),
   });
 
-  // Update room
+  // Update room (supports body or query)
   fastify.put("/:id", {
     preHandler: [
       validate(paramsSchema, "params"),
-      validate(updateRoomSchema, "body"),
+      validate(updateRoomSchema, "body_or_query"),
     ],
     handler: roomController.updateRoom.bind(roomController),
   });

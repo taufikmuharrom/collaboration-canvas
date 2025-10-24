@@ -40,17 +40,17 @@ export async function edgeRoutes(fastify: FastifyInstance): Promise<void> {
     handler: edgeController.getEdgeById.bind(edgeController),
   });
 
-  // Create new edge
+  // Create new edge (supports body or query)
   fastify.post("/", {
-    preHandler: validate(createEdgeSchema, "body"),
+    preHandler: validate(createEdgeSchema, "body_or_query"),
     handler: edgeController.createEdge.bind(edgeController),
   });
 
-  // Update edge
+  // Update edge (supports body or query)
   fastify.put("/:id", {
     preHandler: [
       validate(paramsSchema, "params"),
-      validate(updateEdgeSchema, "body"),
+      validate(updateEdgeSchema, "body_or_query"),
     ],
     handler: edgeController.updateEdge.bind(edgeController),
   });

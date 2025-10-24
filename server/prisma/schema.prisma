@@ -43,14 +43,14 @@ model Node {
 model Edge {
   id        String   @id @default(cuid())
   roomId    String
-  sourceId  String
-  targetId  String
+  sourceId  String   // source node id
+  targetId  String   // target node id
   data      Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  source    Node     @relation("SourceNode", fields: [sourceId], references: [id], onDelete: Cascade)
-  target    Node     @relation("TargetNode", fields: [targetId], references: [id], onDelete: Cascade)
+  sourceNode  Node     @relation("SourceNode", fields: [sourceId], references: [id], onDelete: Cascade)
+  targetNode  Node     @relation("TargetNode", fields: [targetId], references: [id], onDelete: Cascade)
 
   @@map("edges")
 }

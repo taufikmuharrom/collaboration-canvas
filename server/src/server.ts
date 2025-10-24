@@ -9,6 +9,7 @@ import { responseHandler } from "./utils/response.js";
 import { roomRoutes } from "./routes/roomRoutes.js";
 import { nodeRoutes } from "./routes/nodeRoutes.js";
 import { edgeRoutes } from "./routes/edgeRoutes.js";
+import { registerSwagger } from "./config/swagger.js";
 
 // Create Fastify instance
 const fastify = Fastify({
@@ -44,6 +45,9 @@ async function registerPlugins(): Promise<void> {
 
   // Response handler middleware
   fastify.addHook("onRequest", responseHandler);
+
+  // Swagger / OpenAPI
+  await registerSwagger(fastify);
 }
 
 // Register routes

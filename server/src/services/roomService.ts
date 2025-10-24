@@ -1,6 +1,6 @@
 import { prisma, Prisma } from "../config/database.js";
 import { NotFoundError, ConflictError } from "../utils/errors.js";
-import type { Room } from "@prisma/client";
+import type { Room, Node, Edge } from "@prisma/client";
 
 export interface CreateRoomData {
   name: string;
@@ -25,6 +25,11 @@ export interface RoomWithStats extends Room {
   stats: RoomStats;
 }
 
+export interface RoomWithRelations extends Room {
+  nodes: Node[];
+  edges: Edge[];
+}
+
 class RoomService {
   async getAllRooms(
     options: PaginationOptions
@@ -44,16 +49,17 @@ class RoomService {
     return { rooms, total };
   }
 
-  async getRoomById(id: string): Promise<Room> {
+  async getRoomById(id: string): Promise<RoomWithRelations> {
     const room = await prisma.room.findUnique({
       where: { id },
+      include: { nodes: true, edges: true },
     });
 
     if (!room) {
       throw new NotFoundError(`Room with id ${id} not found`);
     }
 
-    return room;
+    return room as RoomWithRelations;
   }
 
   async createRoom(data: CreateRoomData): Promise<Room> {

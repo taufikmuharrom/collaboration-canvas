@@ -66,7 +66,7 @@ export const updateEdgeSchema = z.object({
   data: z.record(z.any()).optional(),
 });
 
-type ValidationSource = "body" | "params" | "query";
+type ValidationSource = "body" | "params" | "query" | "body_or_query";
 
 // Validation middleware factory
 export const validate = (
@@ -83,16 +83,19 @@ export const validate = (
           ? request.params
           : source === "query"
           ? request.query
+          : source === "body_or_query"
+          ? (request.body ?? request.query)
           : request.body;
 
       const validated = schema.parse(data);
 
       if (source === "params") {
-        request.params = validated;
+        request.params = validated as any;
       } else if (source === "query") {
-        request.query = validated;
+        request.query = validated as any;
       } else {
-        request.body = validated;
+        // For both body and body_or_query, assign to body
+        request.body = validated as any;
       }
     } catch (error) {
       reply.status(400).send({
