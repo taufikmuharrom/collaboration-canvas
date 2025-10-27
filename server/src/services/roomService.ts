@@ -30,6 +30,34 @@ export interface RoomWithRelations extends Room {
   edges: Edge[];
 }
 
+export interface BulkSyncData {
+  nodes: Array<{
+    id: string;
+    label: string;
+    x: number;
+    y: number;
+  }>;
+  edges: Array<{
+    id: string;
+    sourceId: string;
+    targetId: string;
+    data?: Record<string, any>;
+  }>;
+}
+
+export interface BulkSyncResult {
+  nodes: Array<{
+    ephemeralId: string;
+    serverId: string;
+    node: Node;
+  }>;
+  edges: Array<{
+    ephemeralId: string;
+    serverId: string;
+    edge: Edge;
+  }>;
+}
+
 class RoomService {
   async getAllRooms(
     options: PaginationOptions
@@ -138,6 +166,61 @@ class RoomService {
       totalEdges: edgeCount,
       lastActivity: lastActivity?.updatedAt || room.updatedAt,
     };
+  }
+
+  async bulkSync(roomId: string, data: BulkSyncData): Promise<BulkSyncResult> {
+    // Verify room exists
+    await this.getRoomById(roomId);
+
+    const result: BulkSyncResult = {
+      nodes: [],
+      edges: [],
+    };
+
+    // Create a mapping for ephemeral node IDs to server IDs
+    const nodeIdMapping = new Map<string, string>();
+
+    // Process nodes first
+    for (const nodeData of data.nodes) {
+      const createdNode = await prisma.node.create({
+        data: {
+          roomId,
+          label: nodeData.label,
+          x: nodeData.x,
+          y: nodeData.y,
+        },
+      });
+
+      nodeIdMapping.set(nodeData.id, createdNode.id);
+      result.nodes.push({
+        ephemeralId: nodeData.id,
+        serverId: createdNode.id,
+        node: createdNode,
+      });
+    }
+
+    // Process edges with updated node references
+    for (const edgeData of data.edges) {
+      // Map ephemeral IDs to server IDs if they exist in the mapping
+      const sourceId = nodeIdMapping.get(edgeData.sourceId) || edgeData.sourceId;
+      const targetId = nodeIdMapping.get(edgeData.targetId) || edgeData.targetId;
+
+      const createdEdge = await prisma.edge.create({
+        data: {
+          roomId,
+          source: sourceId,
+          target: targetId,
+        },
+      });
+
+      result.edges.push({
+        ephemeralId: edgeData.id,
+        serverId: createdEdge.id,
+        edge: createdEdge,
+      });
+    }
+
+    return result;
   }
 }
 

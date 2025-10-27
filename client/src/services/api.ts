@@ -229,6 +229,23 @@ export const nodeApi = {
     return res as ApiResponse<Node>
   },
 
+  // Update a node's position only (focused API)
+  async updateNodePosition(
+    roomId: string,
+    nodeId: string,
+    positionX: number,
+    positionY: number,
+  ): Promise<ApiResponse<Node>> {
+    const res = await apiRequest<ApiResponse<unknown>>(`/rooms/${roomId}/nodes/${nodeId}`, {
+      method: 'PUT',
+      data: { positionX, positionY },
+    })
+    if (res.success && res.data) {
+      res.data = normalizeNode(res.data as ServerNode)
+    }
+    return res as ApiResponse<Node>
+  },
+
   // Delete a node
   async deleteNode(roomId: string, nodeId: string): Promise<ApiResponse<void>> {
     return apiRequest<ApiResponse<void>>(`/rooms/${roomId}/nodes/${nodeId}`, {

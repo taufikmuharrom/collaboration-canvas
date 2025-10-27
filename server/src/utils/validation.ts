@@ -108,6 +108,57 @@ export const updateEdgeSchema = z
     data: d.data,
   }));
 
+// Bulk sync validation schemas
+export const bulkSyncNodeSchema = z
+  .object({
+    id: z.string(), // ephemeral ID from client
+    label: z
+      .string()
+      .min(1, "Node label is required")
+      .max(200, "Node label too long"),
+    x: z.number().optional(),
+    y: z.number().optional(),
+    positionX: z.number().optional(),
+    positionY: z.number().optional(),
+  })
+  .refine(
+    (d) => (d.x ?? d.positionX) !== undefined && (d.y ?? d.positionY) !== undefined,
+    {
+      message: "Node position (x/y or positionX/positionY) is required",
+    }
+  )
+  .transform((d) => ({
+    id: d.id,
+    label: d.label,
+    x: d.x ?? d.positionX!,
+    y: d.y ?? d.positionY!,
+  }));
+
+export const bulkSyncEdgeSchema = z
+  .object({
+    id: z.string(), // ephemeral ID from client
+    sourceId: z.string().optional(),
+    targetId: z.string().optional(),
+    source: z.string().optional(),
+    target: z.string().optional(),
+    data: z.record(z.any()).optional(),
+  })
+  .refine(
+    (d) => (d.sourceId ?? d.source) !== undefined && (d.targetId ?? d.target) !== undefined,
+    { message: "Edge source/target is required" }
+  )
+  .transform((d) => ({
+    id: d.id,
+    sourceId: d.sourceId ?? d.source!,
+    targetId: d.targetId ?? d.target!,
+    data: d.data,
+  }));
+
+export const bulkSyncSchema = z.object({
+  nodes: z.array(bulkSyncNodeSchema).default([]),
+  edges: z.array(bulkSyncEdgeSchema).default([]),
+});
+
 type ValidationSource = "body" | "params" | "query" | "body_or_query";
 
 // Validation middleware factory

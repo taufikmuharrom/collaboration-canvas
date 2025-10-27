@@ -22,6 +22,25 @@ interface RoomParams {
   id: string;
 }
 
+interface BulkSyncParams {
+  roomId: string;
+}
+
+interface BulkSyncBody {
+  nodes: Array<{
+    id: string;
+    label: string;
+    x: number;
+    y: number;
+  }>;
+  edges: Array<{
+    id: string;
+    sourceId: string;
+    targetId: string;
+    data?: Record<string, any>;
+  }>;
+}
+
 export class RoomController {
   async getAllRooms(
     request: FastifyRequest<{ Querystring: GetRoomsQuery }>,
@@ -85,6 +104,18 @@ export class RoomController {
     const stats = await roomService.getRoomStats(id);
 
     reply.send(success(stats));
+  }
+
+  async bulkSync(
+    request: FastifyRequest<{ Params: BulkSyncParams; Body: BulkSyncBody }>,
+    reply: FastifyReply
+  ): Promise<void> {
+    const { roomId } = request.params;
+    const { nodes, edges } = request.body;
+
+    const result = await roomService.bulkSync(roomId, { nodes, edges });
+
+    reply.send(success(result, "Bulk sync completed successfully"));
   }
 }
 

@@ -13,6 +13,7 @@ import {
   updateEdgeSchema,
   idSchema,
   paginationSchema,
+  bulkSyncSchema,
 } from "../utils/validation.js";
 
 const paramsSchema = z.object({
@@ -145,5 +146,14 @@ export async function roomRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.delete("/:roomId/edges/:edgeId", {
     preHandler: validate(edgeParamsSchema, "params"),
     handler: edgeController.deleteEdge.bind(edgeController),
+  });
+
+  // Bulk sync nodes and edges for offline synchronization
+  fastify.post("/:roomId/sync", {
+    preHandler: [
+      validate(roomParamsSchema, "params"),
+      validate(bulkSyncSchema, "body"),
+    ],
+    handler: roomController.bulkSync.bind(roomController),
   });
 }

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { IndexeddbPersistence } from 'y-indexeddb'
@@ -41,6 +41,15 @@ export const useCollaborationStore = defineStore('collaboration', () => {
     error: error.value || undefined,
   }))
 
+  watch(isOnline, (newState) => {
+    if (newState) {
+      console.log('ONLINE - Starting sync...')
+      syncWithServer()
+    } else {
+      console.log('OFFLINE')
+    }
+  })
+
   // Initialize collaboration for a room
   async function initializeRoom(roomId: string) {
     try {
@@ -49,6 +58,9 @@ export const useCollaborationStore = defineStore('collaboration', () => {
 
       currentRoomId.value = roomId
       error.value = null
+
+      // Load offline queue from localStorage
+      loadOfflineQueue()
 
       // Create new Yjs document
       ydoc.value = new Y.Doc()
@@ -62,6 +74,11 @@ export const useCollaborationStore = defineStore('collaboration', () => {
 
       // Set up WebSocket provider (real-time collaboration)
       wsProvider.value = new WebsocketProvider(WS_URL, `room-${roomId}`, ydoc.value)
+
+      // Wait for initial content to be loaded from IndexedDB
+      indexeddbProvider.value?.once('synced', () => {
+        console.log('initial content loaded', yNodes.value?.toJSON())
+      })
 
       // Set up event listeners
       setupEventListeners()
@@ -200,7 +217,7 @@ export const useCollaborationStore = defineStore('collaboration', () => {
 
   // Load initial data from server
   async function loadInitialData(roomId: string) {
-    if (!yNodes.value || !yEdges.value) return
+    if (!yNodes.value || !yEdges.value || !isOnline.value) return
 
     try {
       isSyncing.value = true
@@ -229,7 +246,26 @@ export const useCollaborationStore = defineStore('collaboration', () => {
   // Add a new node
   async function addNode(node: Omit<Node, 'id' | 'createdAt' | 'updatedAt'>) {
     if (!yNodes.value || !currentRoomId.value) return
-
+    
+    if (!isOnline.value) {
+      const dummyNode: Node = {
+        ...node,
+        id: `temporary-${Date.now()}-${Math.random().toString(36)}`,
+        roomId: currentRoomId.value,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+      yNodes.value.set(dummyNode.id, dummyNode)
+      
+      // Add to offline queue for later sync
+      addToOfflineQueue({
+        type: 'create_node',
+        data: dummyNode,
+        roomId: currentRoomId.value
+      })
+      
+      return dummyNode
+    }
     // Persist to database first to get canonical cuid ID
     try {
       const res = await api.nodes.createNode({
@@ -272,11 +308,9 @@ export const useCollaborationStore = defineStore('collaboration', () => {
 
   // Update an existing node
   async function updateNode(nodeId: string, updates: Partial<Node>) {
-    console.log('updateNode', nodeId, updates)
     if (!yNodes.value || !currentRoomId.value) return
 
     const existingNode = yNodes.value.get(nodeId)
-    console.log('existingNode', existingNode)
     if (existingNode) {
       // Optimistic local/Yjs update for real-time collaboration
       const updatedNode: Node = {
@@ -286,29 +320,46 @@ export const useCollaborationStore = defineStore('collaboration', () => {
       }
       yNodes.value.set(nodeId, updatedNode)
 
-      // Persist to server
+      // Persist to server: use focused API when only position changes
       try {
-        const payload: UpdateNodeRequest = {}
-        if (updates.label !== undefined) payload.label = updates.label
-        if (updates.positionX !== undefined) payload.positionX = updates.positionX
-        if (updates.positionY !== undefined) payload.positionY = updates.positionY
-        if (updates.data !== undefined) payload.data = updates.data
+        const posXPresent = updates.positionX !== undefined
+        const posYPresent = updates.positionY !== undefined
+        const onlyPosition =
+          (posXPresent || posYPresent) && updates.label === undefined && updates.data === undefined
 
-        const res = await api.nodes.updateNode(currentRoomId.value, nodeId, payload)
-        if (res.success && res.data) {
-          const serverNode = res.data
-          const reconciled: Node = {
-            id: serverNode.id,
-            roomId: serverNode.roomId,
-            label: serverNode.label,
-            positionX: serverNode.positionX,
-            positionY: serverNode.positionY,
-            data: serverNode.data ?? {},
-            createdAt: serverNode.createdAt,
-            updatedAt: serverNode.updatedAt,
+        if (onlyPosition) {
+          const res = await api.nodes.updateNodePosition(
+            currentRoomId.value,
+            nodeId,
+            updates.positionX ?? existingNode.positionX,
+            updates.positionY ?? existingNode.positionY,
+          )
+          if (res.success && res.data) {
+            yNodes.value.set(nodeId, res.data)
           }
-          // Update Yjs with server canonical values
-          yNodes.value.set(nodeId, reconciled)
+        } else {
+          const payload: UpdateNodeRequest = {}
+          if (updates.label !== undefined) payload.label = updates.label
+          if (updates.positionX !== undefined) payload.positionX = updates.positionX
+          if (updates.positionY !== undefined) payload.positionY = updates.positionY
+          if (updates.data !== undefined) payload.data = updates.data
+
+          const res = await api.nodes.updateNode(currentRoomId.value, nodeId, payload)
+          if (res.success && res.data) {
+            const serverNode = res.data
+            const reconciled: Node = {
+              id: serverNode.id,
+              roomId: serverNode.roomId,
+              label: serverNode.label,
+              positionX: serverNode.positionX,
+              positionY: serverNode.positionY,
+              data: serverNode.data ?? {},
+              createdAt: serverNode.createdAt,
+              updatedAt: serverNode.updatedAt,
+            }
+            // Update Yjs with server canonical values
+            yNodes.value.set(nodeId, reconciled)
+          }
         }
       } catch (error) {
         console.error('Failed to persist node update:', error)
@@ -432,11 +483,49 @@ export const useCollaborationStore = defineStore('collaboration', () => {
     try {
       isSyncing.value = true
 
-      // This is a simplified sync - in a real app, you'd want more sophisticated
-      // conflict resolution and incremental sync
+      // Process offline queue
+      if (offlineQueue.value.length > 0) {
+        console.log(`Processing ${offlineQueue.value.length} offline operations`)
+        
+        for (const operation of offlineQueue.value) {
+          try {
+            switch (operation.type) {
+              case 'create_node':
+                const nodeData = operation.data as Node
+                const res = await api.nodes.createNode({
+                  roomId: operation.roomId,
+                  label: nodeData.label,
+                  positionX: nodeData.positionX,
+                  positionY: nodeData.positionY,
+                  data: nodeData.data,
+                })
+                if (res.success && res.data) {
+                  // Replace temporary node with server node
+                  yNodes.value.delete(nodeData.id)
+                  const serverNode: Node = {
+                    id: res.data.id,
+                    roomId: res.data.roomId,
+                    label: res.data.label,
+                    positionX: res.data.positionX,
+                    positionY: res.data.positionY,
+                    data: res.data.data ?? {},
+                    createdAt: res.data.createdAt,
+                    updatedAt: res.data.updatedAt,
+                  }
+                  yNodes.value.set(serverNode.id, serverNode)
+                }
+                break
+              // Add more cases for other operations as needed
+            }
+          } catch (error) {
+            console.error('Failed to sync operation:', operation, error)
+          }
+        }
+        
+        // Clear processed operations
+        clearOfflineQueue()
+      }
 
-      // Here you would implement your sync logic with the server
-      // For now, we'll just update the last sync time
       lastSyncTime.value = new Date()
     } catch (err) {
       console.error('Sync failed:', err)
@@ -491,3 +580,46 @@ export const useCollaborationStore = defineStore('collaboration', () => {
     cleanup,
   }
 })
+
+// Offline queue for sync operations
+interface OfflineOperation {
+  id: string
+  type: 'create_node' | 'update_node' | 'delete_node' | 'create_edge' | 'update_edge' | 'delete_edge'
+  data: Node | Edge | Partial<Node> | Partial<Edge> | { nodeId: string } | { edgeId: string }
+  timestamp: number
+  roomId: string
+}
+
+const offlineQueue = ref<OfflineOperation[]>([])
+
+// Add operation to offline queue
+function addToOfflineQueue(operation: Omit<OfflineOperation, 'id' | 'timestamp'>) {
+  const queueItem: OfflineOperation = {
+    ...operation,
+    id: `offline-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    timestamp: Date.now()
+  }
+  offlineQueue.value.push(queueItem)
+  
+  // Store in localStorage for persistence across sessions
+  localStorage.setItem('collaboration-offline-queue', JSON.stringify(offlineQueue.value))
+}
+
+// Load offline queue from localStorage
+function loadOfflineQueue() {
+  try {
+    const stored = localStorage.getItem('collaboration-offline-queue')
+    if (stored) {
+      offlineQueue.value = JSON.parse(stored)
+    }
+  } catch (error) {
+    console.error('Failed to load offline queue:', error)
+    offlineQueue.value = []
+  }
+}
+
+// Clear offline queue
+function clearOfflineQueue() {
+  offlineQueue.value = []
+  localStorage.removeItem('collaboration-offline-queue')
+}

@@ -148,7 +148,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { VueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
@@ -165,9 +165,6 @@ const collaborationStore = useCollaborationStore()
 // Reactive state
 const rooms = ref<Room[]>([])
 const newRoomName = ref('')
-const editingNode = ref<string | null>(null)
-const editingNodeLabel = ref('')
-const nodeEditInput = ref<HTMLInputElement | null>(null)
 const selectedNodes = ref<string[]>([])
 
 const selectedEdges = ref<string[]>([])
@@ -239,28 +236,12 @@ async function switchRoom(roomId: string) {
 async function addNewNode() {
   if (!currentRoomId.value) return
 
-  const newNode = await collaborationStore.addNode({
+  collaborationStore.addNode({
     roomId: currentRoomId.value,
     label: `Node ${nodeCounter.value++}`,
     positionX: Math.random() * 400 + 100,
     positionY: Math.random() * 300 + 100,
     data: {},
-  })
-
-  if (newNode) {
-    // Start editing the new node immediately
-    nextTick(() => {
-      startNodeEdit(newNode.id, newNode.label)
-    })
-  }
-}
-
-function startNodeEdit(nodeId: string, currentLabel: string) {
-  editingNode.value = nodeId
-  editingNodeLabel.value = currentLabel
-  nextTick(() => {
-    nodeEditInput.value?.focus()
-    nodeEditInput.value?.select()
   })
 }
 
@@ -310,17 +291,13 @@ watch(currentRoomId, async (newRoomId) => {
   }
 })
 
-function onNodeDragStop(event: NodeDragEvent) {
-  console.log('onNodeDragStop', event)
-  event.nodes?.forEach((node) => {
-    const pos = node.position
-    const x = pos?.x ?? 0
-    const y = pos?.y ?? 0
-    collaborationStore.updateNode(node.id, {
-      positionX: x,
-      positionY: y,
-    })
+async function onNodeDragStop(event: NodeDragEvent) {
+  const tasks = (event.nodes ?? []).map((node) => {
+    const x = node.position?.x ?? 0
+    const y = node.position?.y ?? 0
+    return collaborationStore.updateNode(node.id, { positionX: x, positionY: y })
   })
+  await Promise.all(tasks)
 }
 
 // Keyboard event handlers
