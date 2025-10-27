@@ -22,7 +22,8 @@ interface GetEdgesQuery {
 }
 
 interface EdgeParams {
-  id: string;
+  id?: string;
+  edgeId?: string;
 }
 
 interface RoomParams {
@@ -31,6 +32,11 @@ interface RoomParams {
 
 interface NodeParams {
   nodeId: string;
+}
+
+interface NestedEdgeParams {
+  roomId: string;
+  edgeId: string;
 }
 
 export class EdgeController {
@@ -54,11 +60,14 @@ export class EdgeController {
   }
 
   async getEdgeById(
-    request: FastifyRequest<{ Params: EdgeParams }>,
+    request: FastifyRequest<{ Params: EdgeParams | NestedEdgeParams }>,
     reply: FastifyReply
   ): Promise<void> {
-    const { id } = request.params;
-    const edge = await edgeService.getEdgeById(id);
+    const edgeId = 'edgeId' in request.params ? request.params.edgeId : request.params.id;
+    if (!edgeId) {
+      throw new Error('Edge ID is required');
+    }
+    const edge = await edgeService.getEdgeById(edgeId);
 
     reply.send(success(edge));
   }
@@ -87,29 +96,36 @@ export class EdgeController {
     request: FastifyRequest<{ Body: CreateEdgeData }>,
     reply: FastifyReply
   ): Promise<void> {
-    const edgeData = request.body;
+    const maybeRoomId = (request.params as any)?.roomId;
+    const edgeData = { ...request.body, roomId: (request.body as any).roomId ?? maybeRoomId } as CreateEdgeData;
     const edge = await edgeService.createEdge(edgeData);
 
     reply.status(201).send(created(edge, "Edge created successfully"));
   }
 
   async updateEdge(
-    request: FastifyRequest<{ Params: EdgeParams; Body: UpdateEdgeData }>,
+    request: FastifyRequest<{ Params: EdgeParams | NestedEdgeParams; Body: UpdateEdgeData }>,
     reply: FastifyReply
   ): Promise<void> {
-    const { id } = request.params;
+    const edgeId = 'edgeId' in request.params ? request.params.edgeId : request.params.id;
+    if (!edgeId) {
+      throw new Error('Edge ID is required');
+    }
     const updateData = request.body;
-    const edge = await edgeService.updateEdge(id, updateData);
+    const edge = await edgeService.updateEdge(edgeId, updateData);
 
     reply.send(updated(edge, "Edge updated successfully"));
   }
 
   async deleteEdge(
-    request: FastifyRequest<{ Params: EdgeParams }>,
+    request: FastifyRequest<{ Params: EdgeParams | NestedEdgeParams }>,
     reply: FastifyReply
   ): Promise<void> {
-    const { id } = request.params;
-    await edgeService.deleteEdge(id);
+    const edgeId = 'edgeId' in request.params ? request.params.edgeId : request.params.id;
+    if (!edgeId) {
+      throw new Error('Edge ID is required');
+    }
+    await edgeService.deleteEdge(edgeId);
 
     reply.send(deleted("Edge deleted successfully"));
   }

@@ -57,6 +57,57 @@ axiosInstance.interceptors.response.use(
   }
 )
 
+// Helpers to normalize server payloads to client shapes
+type ServerNode = {
+  id: string
+  roomId: string
+  label: string
+  x?: number
+  y?: number
+  positionX?: number
+  positionY?: number
+  data?: Record<string, unknown>
+  createdAt?: string
+  updatedAt?: string
+}
+
+function normalizeNode(raw: ServerNode): Node {
+  return {
+    id: raw.id,
+    roomId: raw.roomId,
+    label: raw.label,
+    positionX: raw.positionX ?? raw.x ?? 0,
+    positionY: raw.positionY ?? raw.y ?? 0,
+    data: raw.data ?? {},
+    createdAt: raw.createdAt,
+    updatedAt: raw.updatedAt,
+  }
+}
+
+type ServerEdge = {
+  id: string
+  roomId: string
+  source?: string
+  target?: string
+  sourceId?: string
+  targetId?: string
+  data?: Record<string, unknown>
+  createdAt?: string
+  updatedAt?: string
+}
+
+function normalizeEdge(raw: ServerEdge): Edge {
+  return {
+    id: raw.id,
+    roomId: raw.roomId,
+    sourceId: raw.sourceId ?? raw.source!,
+    targetId: raw.targetId ?? raw.target!,
+    data: raw.data ?? {},
+    createdAt: raw.createdAt,
+    updatedAt: raw.updatedAt,
+  }
+}
+
 // Generic API request handler
 async function apiRequest<T>(endpoint: string, config: AxiosRequestConfig = {}): Promise<T> {
   try {
@@ -80,7 +131,17 @@ export const roomApi = {
 
   // Get a specific room by ID
   async getRoom(id: string): Promise<ApiResponse<Room>> {
-    return apiRequest<ApiResponse<Room>>(`/rooms/${id}`)
+    const res = await apiRequest<ApiResponse<unknown>>(`/rooms/${id}`)
+    if (res.success && res.data) {
+      const room = res.data as Room & { nodes?: ServerNode[]; edges?: ServerEdge[] }
+      const normalized: Room = {
+        ...room,
+        nodes: (room.nodes ?? []).map((n) => normalizeNode(n)),
+        edges: (room.edges ?? []).map((e) => normalizeEdge(e)),
+      }
+      res.data = normalized
+    }
+    return res as ApiResponse<Room>
   },
 
   // Create a new room
@@ -124,20 +185,32 @@ export const nodeApi = {
     const query = searchParams.toString()
     const endpoint = `/rooms/${roomId}/nodes${query ? `?${query}` : ''}`
 
-    return apiRequest<ApiResponse<PaginatedResponse<Node>>>(endpoint)
+    const res = await apiRequest<ApiResponse<PaginatedResponse<unknown>>>(endpoint)
+    if (res.success && res.data) {
+      res.data.data = (res.data.data as ServerNode[]).map((n) => normalizeNode(n))
+    }
+    return res as ApiResponse<PaginatedResponse<Node>>
   },
 
   // Get a specific node
   async getNode(roomId: string, nodeId: string): Promise<ApiResponse<Node>> {
-    return apiRequest<ApiResponse<Node>>(`/rooms/${roomId}/nodes/${nodeId}`)
+    const res = await apiRequest<ApiResponse<unknown>>(`/rooms/${roomId}/nodes/${nodeId}`)
+    if (res.success && res.data) {
+      res.data = normalizeNode(res.data as ServerNode)
+    }
+    return res as ApiResponse<Node>
   },
 
   // Create a new node
   async createNode(data: CreateNodeRequest): Promise<ApiResponse<Node>> {
-    return apiRequest<ApiResponse<Node>>(`/rooms/${data.roomId}/nodes`, {
+    const res = await apiRequest<ApiResponse<unknown>>(`/rooms/${data.roomId}/nodes`, {
       method: 'POST',
       data: data,
     })
+    if (res.success && res.data) {
+      res.data = normalizeNode(res.data as ServerNode)
+    }
+    return res as ApiResponse<Node>
   },
 
   // Update a node
@@ -146,10 +219,14 @@ export const nodeApi = {
     nodeId: string,
     data: UpdateNodeRequest,
   ): Promise<ApiResponse<Node>> {
-    return apiRequest<ApiResponse<Node>>(`/rooms/${roomId}/nodes/${nodeId}`, {
+    const res = await apiRequest<ApiResponse<unknown>>(`/rooms/${roomId}/nodes/${nodeId}`, {
       method: 'PUT',
       data: data,
     })
+    if (res.success && res.data) {
+      res.data = normalizeNode(res.data as ServerNode)
+    }
+    return res as ApiResponse<Node>
   },
 
   // Delete a node
@@ -181,20 +258,32 @@ export const edgeApi = {
     const query = searchParams.toString()
     const endpoint = `/rooms/${roomId}/edges${query ? `?${query}` : ''}`
 
-    return apiRequest<ApiResponse<PaginatedResponse<Edge>>>(endpoint)
+    const res = await apiRequest<ApiResponse<PaginatedResponse<unknown>>>(endpoint)
+    if (res.success && res.data) {
+      res.data.data = (res.data.data as ServerEdge[]).map((e) => normalizeEdge(e))
+    }
+    return res as ApiResponse<PaginatedResponse<Edge>>
   },
 
   // Get a specific edge
   async getEdge(roomId: string, edgeId: string): Promise<ApiResponse<Edge>> {
-    return apiRequest<ApiResponse<Edge>>(`/rooms/${roomId}/edges/${edgeId}`)
+    const res = await apiRequest<ApiResponse<unknown>>(`/rooms/${roomId}/edges/${edgeId}`)
+    if (res.success && res.data) {
+      res.data = normalizeEdge(res.data as ServerEdge)
+    }
+    return res as ApiResponse<Edge>
   },
 
   // Create a new edge
   async createEdge(data: CreateEdgeRequest): Promise<ApiResponse<Edge>> {
-    return apiRequest<ApiResponse<Edge>>(`/rooms/${data.roomId}/edges`, {
+    const res = await apiRequest<ApiResponse<unknown>>(`/rooms/${data.roomId}/edges`, {
       method: 'POST',
       data: data,
     })
+    if (res.success && res.data) {
+      res.data = normalizeEdge(res.data as ServerEdge)
+    }
+    return res as ApiResponse<Edge>
   },
 
   // Update an edge
@@ -203,10 +292,14 @@ export const edgeApi = {
     edgeId: string,
     data: UpdateEdgeRequest,
   ): Promise<ApiResponse<Edge>> {
-    return apiRequest<ApiResponse<Edge>>(`/rooms/${roomId}/edges/${edgeId}`, {
+    const res = await apiRequest<ApiResponse<unknown>>(`/rooms/${roomId}/edges/${edgeId}`, {
       method: 'PUT',
       data: data,
     })
+    if (res.success && res.data) {
+      res.data = normalizeEdge(res.data as ServerEdge)
+    }
+    return res as ApiResponse<Edge>
   },
 
   // Delete an edge

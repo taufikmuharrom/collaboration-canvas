@@ -1,7 +1,7 @@
 <template>
   <div class="h-screen flex bg-gray-50">
     <!-- Sidebar -->
-    <div class="w-80 bg-white shadow-lg border-r border-gray-200 flex flex-col">
+    <div class="w-72 bg-white shadow-lg border-r border-gray-200 flex flex-col">
       <!-- Header -->
       <div class="p-6 border-b border-gray-200">
         <h1 class="text-2xl font-bold text-gray-900 mb-2">Collaboration Canvas</h1>
@@ -109,12 +109,6 @@
               </svg>
               Add Node
             </button>
-
-            <div class="text-xs text-gray-500 space-y-1">
-              <p>• Double-click nodes to edit</p>
-              <p>• Drag to connect nodes</p>
-              <p>• Click × to delete nodes</p>
-            </div>
           </div>
         </div>
       </div>
@@ -141,43 +135,13 @@
         :default-viewport="{ zoom: 1 }"
         :min-zoom="0.2"
         :max-zoom="4"
+        fit-view-on-init
       >
         <Background pattern="dots" :gap="20" />
         <Controls />
         <MiniMap />
 
         <!-- Custom Node Template -->
-        <template #node-default="{ data, id }">
-          <div
-            class="custom-node bg-white border-2 border-slate-300 rounded-md p-3 shadow-sm w-32 hover:shadow-md"
-            :class="{ 'border-blue-500': selectedNodes.includes(id) }"
-          >
-            <div v-if="editingNode === id" class="flex flex-col gap-2">
-              <input
-                v-model="editingNodeLabel"
-                @keyup.enter="saveNodeEdit"
-                @keyup.escape="cancelNodeEdit"
-                @blur="saveNodeEdit"
-                class="text-sm font-medium border border-slate-300 rounded px-2 py-1 focus:outline-none focus:ring focus:ring-blue-200"
-                ref="nodeEditInput"
-              />
-            </div>
-            <div v-else class="flex items-center justify-between">
-              <span
-                class="text-sm font-medium text-slate-900 cursor-pointer"
-                @dblclick="startNodeEdit(id, data.label)"
-              >
-                {{ data.label }}
-              </span>
-              <button
-                @click="deleteNodeById(id)"
-                class="text-red-500 hover:text-red-600 text-xs ml-2"
-              >
-                ×
-              </button>
-            </div>
-          </div>
-        </template>
       </VueFlow>
     </div>
   </div>
@@ -205,6 +169,8 @@ const editingNode = ref<string | null>(null)
 const editingNodeLabel = ref('')
 const nodeEditInput = ref<HTMLInputElement | null>(null)
 const selectedNodes = ref<string[]>([])
+
+const selectedEdges = ref<string[]>([])
 
 // Computed
 const { nodes, edges, currentRoomId, collaborationState } = storeToRefs(collaborationStore)
@@ -270,10 +236,10 @@ async function switchRoom(roomId: string) {
   }
 }
 
-function addNewNode() {
+async function addNewNode() {
   if (!currentRoomId.value) return
 
-  const newNode = collaborationStore.addNode({
+  const newNode = await collaborationStore.addNode({
     roomId: currentRoomId.value,
     label: `Node ${nodeCounter.value++}`,
     positionX: Math.random() * 400 + 100,
@@ -298,26 +264,6 @@ function startNodeEdit(nodeId: string, currentLabel: string) {
   })
 }
 
-function saveNodeEdit() {
-  if (editingNode.value && editingNodeLabel.value.trim()) {
-    collaborationStore.updateNode(editingNode.value, {
-      label: editingNodeLabel.value.trim(),
-    })
-  }
-  cancelNodeEdit()
-}
-
-function cancelNodeEdit() {
-  editingNode.value = null
-  editingNodeLabel.value = ''
-}
-
-function deleteNodeById(nodeId: string) {
-  if (confirm('Are you sure you want to delete this node?')) {
-    collaborationStore.deleteNode(nodeId)
-  }
-}
-
 // Vue Flow event handlers
 function onNodesChange(changes: NodeChange[]) {
   changes.forEach((change) => {
@@ -334,13 +280,22 @@ function onNodesChange(changes: NodeChange[]) {
 }
 
 function onEdgesChange(changes: EdgeChange[]) {
-  // Handle edge changes if needed
-  console.log('Edge changes:', changes)
+  changes.forEach((change) => {
+    if (change.type === 'select') {
+      if (change.selected) {
+        if (!selectedEdges.value.includes(change.id)) {
+          selectedEdges.value.push(change.id)
+        }
+      } else {
+        selectedEdges.value = selectedEdges.value.filter((id) => id !== change.id)
+      }
+    }
+  })
 }
 
-function onConnect(connection: Connection) {
+async function onConnect(connection: Connection) {
   if (connection.source && connection.target && currentRoomId.value) {
-    collaborationStore.addEdge({
+    await collaborationStore.addEdge({
       roomId: currentRoomId.value,
       sourceId: connection.source,
       targetId: connection.target,
@@ -356,6 +311,7 @@ watch(currentRoomId, async (newRoomId) => {
 })
 
 function onNodeDragStop(event: NodeDragEvent) {
+  console.log('onNodeDragStop', event)
   event.nodes?.forEach((node) => {
     const pos = node.position
     const x = pos?.x ?? 0
@@ -367,6 +323,25 @@ function onNodeDragStop(event: NodeDragEvent) {
   })
 }
 
+// Keyboard event handlers
+async function handleKeyDown(event: KeyboardEvent) {
+  if (event.key === 'Delete' || event.key === 'Backspace') {
+    // Delete selected nodes
+    for (const nodeId of selectedNodes.value) {
+      await collaborationStore.deleteNode(nodeId)
+    }
+
+    // Delete selected edges
+    for (const edgeId of selectedEdges.value) {
+      await collaborationStore.deleteEdge(edgeId)
+    }
+
+    // Clear selections
+    selectedNodes.value = []
+    selectedEdges.value = []
+  }
+}
+
 // Lifecycle
 onMounted(async () => {
   await loadRooms()
@@ -375,11 +350,22 @@ onMounted(async () => {
   if (rooms.value && rooms.value.length > 0 && rooms.value[0]) {
     await switchRoom(rooms.value[0].id)
   }
+
+  // Add keyboard event listener
+  document.addEventListener('keydown', handleKeyDown)
 })
 
 onUnmounted(() => {
   collaborationStore.cleanup()
+  // Remove keyboard event listener
+  document.removeEventListener('keydown', handleKeyDown)
 })
 </script>
 
-<style scoped></style>
+<style>
+/* these are necessary styles for vue flow */
+@import '@vue-flow/core/dist/style.css';
+
+/* this contains the default theme, these are optional styles */
+@import '@vue-flow/core/dist/theme-default.css';
+</style>

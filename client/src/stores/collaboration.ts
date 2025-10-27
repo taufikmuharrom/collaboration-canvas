@@ -4,6 +4,7 @@ import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { IndexeddbPersistence } from 'y-indexeddb'
 import type { Node, Edge, FlowNode, FlowEdge, CollaborationState } from '@/types'
+import type { UpdateNodeRequest } from '@/types'
 import { api } from '@/services/api'
 
 // WebSocket server URL
@@ -226,45 +227,105 @@ export const useCollaborationStore = defineStore('collaboration', () => {
   }
 
   // Add a new node
-  function addNode(node: Omit<Node, 'id' | 'createdAt' | 'updatedAt'>) {
+  async function addNode(node: Omit<Node, 'id' | 'createdAt' | 'updatedAt'>) {
     if (!yNodes.value || !currentRoomId.value) return
 
-    const newNode: Node = {
-      ...node,
-      id: `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      roomId: currentRoomId.value,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+    // Persist to database first to get canonical cuid ID
+    try {
+      const res = await api.nodes.createNode({
+        roomId: currentRoomId.value,
+        label: node.label,
+        positionX: node.positionX,
+        positionY: node.positionY,
+        data: node.data,
+      })
+      if (res.success && res.data) {
+        const created = res.data
+        const createdNode: Node = {
+          id: created.id,
+          roomId: created.roomId,
+          label: created.label,
+          positionX: created.positionX,
+          positionY: created.positionY,
+          data: created.data ?? {},
+          createdAt: created.createdAt,
+          updatedAt: created.updatedAt,
+        }
+        // Update Yjs for real-time collaboration with server ID
+        yNodes.value.set(createdNode.id, createdNode)
+        return createdNode
+      }
+    } catch (error) {
+      console.error('Failed to persist node to database:', error)
+      // Fallback: create a local ephemeral node (not persisted)
+      const ephemeral: Node = {
+        ...node,
+        id: `node-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        roomId: currentRoomId.value,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+      yNodes.value.set(ephemeral.id, ephemeral)
+      return ephemeral
     }
-
-    yNodes.value.set(newNode.id, newNode)
-    return newNode
   }
 
   // Update an existing node
-  function updateNode(nodeId: string, updates: Partial<Node>) {
-    if (!yNodes.value) return
+  async function updateNode(nodeId: string, updates: Partial<Node>) {
+    console.log('updateNode', nodeId, updates)
+    if (!yNodes.value || !currentRoomId.value) return
 
     const existingNode = yNodes.value.get(nodeId)
+    console.log('existingNode', existingNode)
     if (existingNode) {
+      // Optimistic local/Yjs update for real-time collaboration
       const updatedNode: Node = {
         ...existingNode,
         ...updates,
         updatedAt: new Date().toISOString(),
       }
       yNodes.value.set(nodeId, updatedNode)
+
+      // Persist to server
+      try {
+        const payload: UpdateNodeRequest = {}
+        if (updates.label !== undefined) payload.label = updates.label
+        if (updates.positionX !== undefined) payload.positionX = updates.positionX
+        if (updates.positionY !== undefined) payload.positionY = updates.positionY
+        if (updates.data !== undefined) payload.data = updates.data
+
+        const res = await api.nodes.updateNode(currentRoomId.value, nodeId, payload)
+        if (res.success && res.data) {
+          const serverNode = res.data
+          const reconciled: Node = {
+            id: serverNode.id,
+            roomId: serverNode.roomId,
+            label: serverNode.label,
+            positionX: serverNode.positionX,
+            positionY: serverNode.positionY,
+            data: serverNode.data ?? {},
+            createdAt: serverNode.createdAt,
+            updatedAt: serverNode.updatedAt,
+          }
+          // Update Yjs with server canonical values
+          yNodes.value.set(nodeId, reconciled)
+        }
+      } catch (error) {
+        console.error('Failed to persist node update:', error)
+      }
+
       return updatedNode
     }
   }
 
   // Delete a node
-  function deleteNode(nodeId: string) {
+  async function deleteNode(nodeId: string) {
     if (!yNodes.value || !yEdges.value) return
 
-    // Remove the node
+    // Remove the node from Yjs
     yNodes.value.delete(nodeId)
 
-    // Remove all edges connected to this node
+    // Remove all edges connected to this node from Yjs
     const edgesToDelete: string[] = []
     yEdges.value.forEach((edge, edgeId) => {
       if (edge.sourceId === nodeId || edge.targetId === nodeId) {
@@ -275,22 +336,62 @@ export const useCollaborationStore = defineStore('collaboration', () => {
     edgesToDelete.forEach((edgeId) => {
       yEdges.value!.delete(edgeId)
     })
+
+    // Persist deletion to database
+    try {
+      await api.nodes.deleteNode(currentRoomId.value!, nodeId)
+      // Delete connected edges from database
+      for (const edgeId of edgesToDelete) {
+        await api.edges.deleteEdge(currentRoomId.value!, edgeId)
+      }
+    } catch (error) {
+      console.error('Failed to delete node from database:', error)
+    }
   }
 
   // Add a new edge
-  function addEdge(edge: Omit<Edge, 'id' | 'createdAt' | 'updatedAt'>) {
+  async function addEdge(edge: Omit<Edge, 'id' | 'createdAt' | 'updatedAt'>) {
     if (!yEdges.value || !currentRoomId.value) return
 
-    const newEdge: Edge = {
+    // Optimistic: add ephemeral edge to Yjs immediately for UI responsiveness
+    const ephemeral: Edge = {
       ...edge,
       id: `edge-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       roomId: currentRoomId.value,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
+    yEdges.value.set(ephemeral.id, ephemeral)
 
-    yEdges.value.set(newEdge.id, newEdge)
-    return newEdge
+    // Persist to database and reconcile ID
+    try {
+      const res = await api.edges.createEdge({
+        roomId: currentRoomId.value,
+        sourceId: edge.sourceId,
+        targetId: edge.targetId,
+        data: edge.data,
+      })
+      if (res.success && res.data) {
+        const created = res.data
+        const createdEdge: Edge = {
+          id: created.id,
+          roomId: created.roomId,
+          sourceId: created.sourceId,
+          targetId: created.targetId,
+          data: created.data ?? {},
+          createdAt: created.createdAt,
+          updatedAt: created.updatedAt,
+        }
+        // Replace ephemeral with canonical server edge
+        yEdges.value.set(createdEdge.id, createdEdge)
+        yEdges.value.delete(ephemeral.id)
+        return createdEdge
+      }
+    } catch (error) {
+      console.error('Failed to persist edge to database:', error)
+      // Keep ephemeral edge for offline use
+      return ephemeral
+    }
   }
 
   // Update an existing edge
@@ -310,9 +411,18 @@ export const useCollaborationStore = defineStore('collaboration', () => {
   }
 
   // Delete an edge
-  function deleteEdge(edgeId: string) {
+  async function deleteEdge(edgeId: string) {
     if (!yEdges.value) return
+
+    // Remove from Yjs
     yEdges.value.delete(edgeId)
+
+    // Persist deletion to database
+    try {
+      await api.edges.deleteEdge(currentRoomId.value!, edgeId)
+    } catch (error) {
+      console.error('Failed to delete edge from database:', error)
+    }
   }
 
   // Sync with server (for offline changes)

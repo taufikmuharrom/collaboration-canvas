@@ -6,16 +6,14 @@ import type { Node } from "@prisma/client";
 export interface CreateNodeData {
   roomId: string;
   label: string;
-  positionX: number;
-  positionY: number;
-  data?: Record<string, any>;
+  x: number;
+  y: number;
 }
 
 export interface UpdateNodeData {
   label?: string;
-  positionX?: number;
-  positionY?: number;
-  data?: Record<string, any>;
+  x?: number;
+  y?: number;
 }
 
 export interface PaginationOptions {
@@ -98,9 +96,8 @@ class NodeService {
         data: {
           roomId: data.roomId,
           label: data.label,
-          positionX: data.positionX,
-          positionY: data.positionY,
-          data: data.data || {},
+          x: data.x,
+          y: data.y,
         },
       });
 
@@ -120,9 +117,8 @@ class NodeService {
       };
 
       if (data.label !== undefined) updateData.label = data.label;
-      if (data.positionX !== undefined) updateData.positionX = data.positionX;
-      if (data.positionY !== undefined) updateData.positionY = data.positionY;
-      if (data.data !== undefined) updateData.data = data.data;
+      if (data.x !== undefined) updateData.x = data.x;
+      if (data.y !== undefined) updateData.y = data.y;
 
       const node = await prisma.node.update({
         where: { id },

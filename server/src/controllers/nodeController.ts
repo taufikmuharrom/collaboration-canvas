@@ -20,11 +20,17 @@ interface GetNodesQuery {
 }
 
 interface NodeParams {
-  id: string;
+  id?: string;
+  nodeId?: string;
 }
 
 interface RoomParams {
   roomId: string;
+}
+
+interface NestedNodeParams {
+  roomId: string;
+  nodeId: string;
 }
 
 export class NodeController {
@@ -45,11 +51,14 @@ export class NodeController {
   }
 
   async getNodeById(
-    request: FastifyRequest<{ Params: NodeParams }>,
+    request: FastifyRequest<{ Params: NodeParams | NestedNodeParams }>,
     reply: FastifyReply
   ): Promise<void> {
-    const { id } = request.params;
-    const node = await nodeService.getNodeById(id);
+    const nodeId = 'nodeId' in request.params ? request.params.nodeId : request.params.id;
+    if (!nodeId) {
+      throw new Error('Node ID is required');
+    }
+    const node = await nodeService.getNodeById(nodeId);
 
     reply.send(success(node));
   }
@@ -68,29 +77,36 @@ export class NodeController {
     request: FastifyRequest<{ Body: CreateNodeData }>,
     reply: FastifyReply
   ): Promise<void> {
-    const nodeData = request.body;
+    const maybeRoomId = (request.params as any)?.roomId;
+    const nodeData = { ...request.body, roomId: (request.body as any).roomId ?? maybeRoomId } as CreateNodeData;
     const node = await nodeService.createNode(nodeData);
 
     reply.status(201).send(created(node, "Node created successfully"));
   }
 
   async updateNode(
-    request: FastifyRequest<{ Params: NodeParams; Body: UpdateNodeData }>,
+    request: FastifyRequest<{ Params: NodeParams | NestedNodeParams; Body: UpdateNodeData }>,
     reply: FastifyReply
   ): Promise<void> {
-    const { id } = request.params;
+    const nodeId = 'nodeId' in request.params ? request.params.nodeId : request.params.id;
+    if (!nodeId) {
+      throw new Error('Node ID is required');
+    }
     const updateData = request.body;
-    const node = await nodeService.updateNode(id, updateData);
+    const node = await nodeService.updateNode(nodeId, updateData);
 
     reply.send(updated(node, "Node updated successfully"));
   }
 
   async deleteNode(
-    request: FastifyRequest<{ Params: NodeParams }>,
+    request: FastifyRequest<{ Params: NodeParams | NestedNodeParams }>,
     reply: FastifyReply
   ): Promise<void> {
-    const { id } = request.params;
-    await nodeService.deleteNode(id);
+    const nodeId = 'nodeId' in request.params ? request.params.nodeId : request.params.id;
+    if (!nodeId) {
+      throw new Error('Node ID is required');
+    }
+    await nodeService.deleteNode(nodeId);
 
     reply.send(deleted("Node deleted successfully"));
   }

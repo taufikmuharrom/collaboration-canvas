@@ -6,13 +6,13 @@ export interface CreateEdgeData {
   roomId: string;
   sourceId: string;
   targetId: string;
-  data?: Record<string, any>;
+  // Note: Prisma Edge model does not have a 'data' field
 }
 
 export interface UpdateEdgeData {
   sourceId?: string;
   targetId?: string;
-  data?: Record<string, any>;
+  // Note: Prisma Edge model does not have a 'data' field
 }
 
 export interface PaginationOptions {
@@ -36,8 +36,9 @@ class EdgeService {
 
     const where: Prisma.EdgeWhereInput = {};
     if (filters.roomId) where.roomId = filters.roomId;
-    if (filters.sourceId) where.sourceId = filters.sourceId;
-    if (filters.targetId) where.targetId = filters.targetId;
+    // fix: use Prisma scalar fields 'source' and 'target'
+    if (filters.sourceId) where.source = filters.sourceId;
+    if (filters.targetId) where.target = filters.targetId;
 
     const [edges, total] = await Promise.all([
       prisma.edge.findMany({
@@ -94,7 +95,8 @@ class EdgeService {
 
     const edges = await prisma.edge.findMany({
       where: {
-        OR: [{ sourceId: nodeId }, { targetId: nodeId }],
+        // fix: use scalar fields
+        OR: [{ source: nodeId }, { target: nodeId }],
       },
       orderBy: { createdAt: "asc" },
     });
@@ -151,8 +153,8 @@ class EdgeService {
       const existingEdge = await prisma.edge.findFirst({
         where: {
           roomId: data.roomId,
-          sourceId: data.sourceId,
-          targetId: data.targetId,
+          source: data.sourceId,
+          target: data.targetId,
         },
       });
 
@@ -165,9 +167,9 @@ class EdgeService {
       const edge = await prisma.edge.create({
         data: {
           roomId: data.roomId,
-          sourceId: data.sourceId,
-          targetId: data.targetId,
-          data: data.data || {},
+          // fix: use scalar fields 'source' and 'target'
+          source: data.sourceId,
+          target: data.targetId,
         },
       });
 
@@ -196,7 +198,8 @@ class EdgeService {
             `Source node with id ${data.sourceId} not found`
           );
         }
-        updateData.source = { connect: { id: data.sourceId } };
+        // fix: use relation field name 'sourceNode'
+        (updateData as any).sourceNode = { connect: { id: data.sourceId } };
       }
 
       // Handle targetId update
@@ -209,12 +212,13 @@ class EdgeService {
             `Target node with id ${data.targetId} not found`
           );
         }
-        updateData.target = { connect: { id: data.targetId } };
+        // fix: use relation field name 'targetNode'
+        (updateData as any).targetNode = { connect: { id: data.targetId } };
       }
 
-      if (data.data !== undefined) {
-        updateData.data = data.data;
-      }
+      // if (data.data !== undefined) {
+      //   updateData.data = data.data;
+      // }
 
       const edge = await prisma.edge.update({
         where: { id },
@@ -261,7 +265,8 @@ class EdgeService {
   async deleteEdgesByNode(nodeId: string): Promise<number> {
     const result = await prisma.edge.deleteMany({
       where: {
-        OR: [{ sourceId: nodeId }, { targetId: nodeId }],
+        // fix: use scalar fields
+        OR: [{ source: nodeId }, { target: nodeId }],
       },
     });
 

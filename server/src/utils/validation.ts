@@ -30,41 +30,83 @@ export const updateRoomSchema = z.object({
 });
 
 // Node validation schemas
-export const createNodeSchema = z.object({
-  roomId: idSchema,
-  label: z
-    .string()
-    .min(1, "Node label is required")
-    .max(200, "Node label too long"),
-  positionX: z.number(),
-  positionY: z.number(),
-  data: z.record(z.any()).optional(),
-});
+export const createNodeSchema = z
+  .object({
+    roomId: idSchema.optional(),
+    label: z
+      .string()
+      .min(1, "Node label is required")
+      .max(200, "Node label too long"),
+    x: z.number().optional(),
+    y: z.number().optional(),
+    positionX: z.number().optional(),
+    positionY: z.number().optional(),
+  })
+  .refine(
+    (d) => (d.x ?? d.positionX) !== undefined && (d.y ?? d.positionY) !== undefined,
+    {
+      message: "Node position (x/y or positionX/positionY) is required",
+    }
+  )
+  .transform((d) => ({
+    roomId: d.roomId,
+    label: d.label,
+    x: d.x ?? d.positionX!,
+    y: d.y ?? d.positionY!,
+  }));
 
-export const updateNodeSchema = z.object({
-  label: z
-    .string()
-    .min(1, "Node label is required")
-    .max(200, "Node label too long")
-    .optional(),
-  positionX: z.number().optional(),
-  positionY: z.number().optional(),
-  data: z.record(z.any()).optional(),
-});
+export const updateNodeSchema = z
+  .object({
+    label: z
+      .string()
+      .min(1, "Node label is required")
+      .max(200, "Node label too long")
+      .optional(),
+    x: z.number().optional(),
+    y: z.number().optional(),
+    positionX: z.number().optional(),
+    positionY: z.number().optional(),
+  })
+  .transform((d) => ({
+    label: d.label,
+    x: d.x ?? d.positionX,
+    y: d.y ?? d.positionY,
+  }));
 
 // Edge validation schemas
-export const createEdgeSchema = z.object({
-  roomId: idSchema,
-  sourceId: idSchema,
-  targetId: idSchema,
-  data: z.record(z.any()).optional(),
-});
+export const createEdgeSchema = z
+  .object({
+    roomId: idSchema.optional(),
+    sourceId: idSchema.optional(),
+    targetId: idSchema.optional(),
+    source: idSchema.optional(),
+    target: idSchema.optional(),
+    data: z.record(z.any()).optional(),
+  })
+  .refine(
+    (d) => (d.sourceId ?? d.source) !== undefined && (d.targetId ?? d.target) !== undefined,
+    { message: "Edge source/target is required" }
+  )
+  .transform((d) => ({
+    roomId: d.roomId,
+    sourceId: d.sourceId ?? d.source!,
+    targetId: d.targetId ?? d.target!,
+    data: d.data,
+  }));
 
-export const updateEdgeSchema = z.object({
-  sourceId: idSchema.optional(),
-  targetId: idSchema.optional(),
-  data: z.record(z.any()).optional(),
-});
+export const updateEdgeSchema = z
+  .object({
+    sourceId: idSchema.optional(),
+    targetId: idSchema.optional(),
+    source: idSchema.optional(),
+    target: idSchema.optional(),
+    data: z.record(z.any()).optional(),
+  })
+  .transform((d) => ({
+    sourceId: d.sourceId ?? d.source,
+    targetId: d.targetId ?? d.target,
+    data: d.data,
+  }));
 
 type ValidationSource = "body" | "params" | "query" | "body_or_query";
 

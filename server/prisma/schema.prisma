@@ -24,10 +24,10 @@ model Room {
 model Node {
   id        String   @id @default(cuid())
   roomId    String
+  type      String   @default("default")
   label     String
-  positionX Float
-  positionY Float
-  data      Json?
+  x         Float
+  y         Float
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
@@ -41,16 +41,15 @@ model Node {
 }
 
 model Edge {
-  id        String   @id @default(cuid())
-  roomId    String
-  sourceId  String   // source node id
-  targetId  String   // target node id
-  data      Json?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  sourceNode  Node     @relation("SourceNode", fields: [sourceId], references: [id], onDelete: Cascade)
-  targetNode  Node     @relation("TargetNode", fields: [targetId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  roomId     String
+  source     String   // source node id
+  target     String   // target node id
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  room       Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  sourceNode Node     @relation("SourceNode", fields: [source], references: [id], onDelete: Cascade)
+  targetNode Node     @relation("TargetNode", fields: [target], references: [id], onDelete: Cascade)
 
   @@map("edges")
 }
